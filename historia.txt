@@ -1,0 +1,3 @@
+Zakup - Produkt A, 10 szt., 100 PLN
+Sprzedaż - Produkt B, 5 szt., 250 PLN
+Zmiana salda - +200 PLN, Komentarz: Zysk ze sprzedaży
