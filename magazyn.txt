@@ -1,0 +1,2 @@
+Produkt A,10
+Produkt B,5

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Historia operacji</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav>
+    <a href="{{ url_for('index') }}">Strona główna</a>
+    <a href="{{ url_for('historia') }}">Historia</a>
+</nav>
+
+<h1>Historia operacji</h1>
+
+<div class="section">
+    {% if komunikat %}
+        <p style="color:red;"><strong>{{ komunikat }}</strong></p>
+    {% endif %}
+
+    <ul>
+        {% for idx, linia in historia %}
+            <li>[{{ idx + 1 }}] {{ linia }}</li>
+        {% endfor %}
+    </ul>
+</div>
+</body>
+</html>
