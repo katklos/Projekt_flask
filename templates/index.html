@@ -16,9 +16,9 @@
 <div class="section">
     <p><strong>Aktualny stan magazynu:</strong></p>
     <ul>
-        {% for produkt, ilosc in magazyn.items() %}
-            <li>{{ produkt }}: {{ ilosc }} szt.</li>
-        {% endfor %}
+        {% for produkt_obj in magazyn %}
+    <li>{{ produkt_obj.nazwa }}: {{ produkt_obj.ilosc }} szt.</li>
+{% endfor %}
     </ul>
     <p><strong>Aktualne saldo:</strong> {{ saldo }} PLN</p>
 </div>

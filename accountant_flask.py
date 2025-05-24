@@ -1,138 +1,129 @@
-from flask import Flask, render_template, request, redirect
-import os
+from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
+from models import db, Saldo, Produkt, Historia
 
 app = Flask(__name__)
-
-
-SALDO_FILE = "saldo.txt"
-MAGAZYN_FILE = "magazyn.txt"
-HISTORIA_FILE = "historia.txt"
-
-
-def czytaj_saldo():
-    if not os.path.exists(SALDO_FILE):
-        return 0
-    with open(SALDO_FILE, "r") as f:
-        return float(f.read())
-
-
-def zapisz_saldo(saldo):
-    with open(SALDO_FILE, "w") as f:
-        f.write(str(saldo))
-
-
-def czytaj_magazyn():
-    magazyn = {}
-    if os.path.exists(MAGAZYN_FILE):
-        with open(MAGAZYN_FILE, "r") as f:
-            for linia in f:
-                produkt, ilosc = linia.strip().split(",")
-                magazyn[produkt] = int(ilosc)
-    return magazyn
-
-
-def zapisz_magazyn(magazyn):
-    with open(MAGAZYN_FILE, "w") as f:
-        for produkt, ilosc in magazyn.items():
-            f.write(f"{produkt},{ilosc}\n")
-
-
-def dodaj_do_historii(tekst):
-    with open(HISTORIA_FILE, "a") as f:
-        f.write(tekst + "\n")
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///accountant.db'
+db.init_app(app)
 
 
 @app.route("/")
 def index():
-    saldo = czytaj_saldo()
-    magazyn = czytaj_magazyn()
+    saldo_obj = Saldo.query.first()
+    saldo = saldo_obj.wartosc if saldo_obj else 0.0
+    magazyn = Produkt.query.all()
     return render_template("index.html", saldo=saldo, magazyn=magazyn)
 
 
 @app.route("/zakup", methods=["POST"])
 def zakup():
-    produkt = request.form["produkt"]
+    produkt_nazwa = request.form["produkt"].strip()
     cena = float(request.form["cena"])
     ilosc = int(request.form["ilosc"])
 
-    saldo = czytaj_saldo()
-    koszt = cena * ilosc
+    try:
+        saldo_obj = Saldo.query.first()
+        saldo = saldo_obj.wartosc
 
-    if saldo < koszt:
-        return "Brak wystarczających środków na koncie!"
+        koszt = cena * ilosc
 
-    saldo -= koszt
-    zapisz_saldo(saldo)
+        if saldo < koszt:
+            return "Brak wystarczających środków na koncie!"
+        saldo_obj.wartosc -= koszt
 
-    magazyn = czytaj_magazyn()
-    magazyn[produkt] = magazyn.get(produkt, 0) + ilosc
-    zapisz_magazyn(magazyn)
+        produkt = Produkt.query.filter_by(nazwa=produkt_nazwa).first()
+        if produkt:
+            produkt.ilosc += ilosc
+        else:
+            nowy_produkt = Produkt(nazwa=produkt_nazwa, ilosc=ilosc)
+            db.session.add(nowy_produkt)
 
-    dodaj_do_historii(f"Zakup - {produkt}, {ilosc} szt., {koszt} PLN")
+        nowy_wpis_historii = Historia(opis=f"Zakup - {produkt_nazwa},  {ilosc} szt., {koszt} PLN")
+        db.session.add(nowy_wpis_historii)
 
-    return redirect("/")
+        db.session.commit()
+        return redirect(url_for("index"))
+
+    except Exception as e:
+        db.session.rollback()
+        return f"Wystąpił błąd podczas zakupu: {e}"
 
 
 @app.route("/sprzedaz", methods=["POST"])
 def sprzedaz():
-    produkt = request.form["produkt"]
+    produkt_nazwa = request.form["produkt"].strip()
     ilosc = int(request.form["ilosc"])
     cena_jednostkowa = float(request.form["cena"])
 
-    magazyn = czytaj_magazyn()
+    try:
+        produkt = Produkt.query.filter_by(nazwa=produkt_nazwa).first()
 
-    if produkt not in magazyn or magazyn[produkt] < ilosc:
-        return "Za mało towaru w magazynie!"
+        if not produkt or produkt.ilosc < ilosc:
+            return "Za mało towaru w magazynie!"
 
-    przychod = cena_jednostkowa * ilosc
+        przychod = cena_jednostkowa * ilosc
 
-    magazyn[produkt] -= ilosc
-    zapisz_magazyn(magazyn)
+        produkt.ilosc -= ilosc
 
-    saldo = czytaj_saldo()
-    saldo += przychod
-    zapisz_saldo(saldo)
+        if produkt.ilosc == 0:
+            db.session.delete(produkt)
 
-    dodaj_do_historii(f"Sprzedaż - {produkt}, {ilosc} szt., {przychod} PLN")
+        saldo_obj = Saldo.query.first()
+        saldo_obj.wartosc += przychod
 
-    return redirect("/")
+        nowy_wpis_historii = Historia(opis=f"Sprzedaż - {produkt_nazwa}, {ilosc} szt., {przychod} PLN")
+        db.session.add(nowy_wpis_historii)
+
+        db.session.commit()
+        return redirect(url_for("index"))
+
+    except Exception as e:
+        db.session.rollback()
+        return f"Wystąpił błąd podczas sprzedaży: {e}"
 
 
 @app.route("/zmiana_salda", methods=["POST"])
 def zmiana_salda():
     wartosc = float(request.form["wartosc"])
-    komentarz = request.form["komentarz"]
+    komentarz = request.form["komentarz"].strip()
 
-    saldo = czytaj_saldo()
-    saldo += wartosc
-    zapisz_saldo(saldo)
+    try:
+        saldo_obj = Saldo.query.first()
+        saldo_obj.wartosc += wartosc
 
-    dodaj_do_historii(f"Zmiana salda - {wartosc} PLN, Komentarz: {komentarz}")
+        nowy_wpis_historii = Historia(opis=f"Zmiana salda - {wartosc} PLN, Komentarz: {komentarz}")
+        db.session.add(nowy_wpis_historii)
 
-    return redirect("/")
+        db.session.commit()
+        return redirect(url_for("index"))
+
+    except Exception as e:
+        db.session.rollback()
+        return f"Wystąpił błąd podczas zmiany salda: {e}"
 
 
 @app.route("/historia/")
 @app.route("/historia/<int:start>/<int:end>")
 def historia(start=None, end=None):
-    if not os.path.exists(HISTORIA_FILE):
-        historia = []
-    else:
-        with open(HISTORIA_FILE, "r") as f:
-            historia = f.readlines()
+    historia_operacji = Historia.query.order_by(Historia.data.desc()).all()
 
-    komunikat = ""
+    komunikat= ""
+    widoczne_historie = []
+
     if start is not None and end is not None:
-        if start < 1 or end > len(historia) or start > end:
-            komunikat = f"Błąd zakresu! Historia ma {len(historia)} pozycji."
-            widoczne = historia
+        if start < 1 or end > len(historia_operacji) or start > end:
+            komunikat = f"Błąd zakresu! Historia ma {len(historia_operacji)} pozycji."
+            widoczne_historie = historia_operacji
         else:
-            widoczne = historia[start-1:end]
+            widoczne_historie = historia_operacji[start - 1:end]
     else:
-        widoczne = historia
+        widoczne_historie = historia_operacji
 
-    return render_template("historia.html", historia=list(enumerate(widoczne)), komunikat=komunikat)
+    return render_template("historia.html", historia=list(enumerate(widoczne_historie)), komunikat=komunikat)
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    with app.app_context():
+        pass
+
+    app.run()
